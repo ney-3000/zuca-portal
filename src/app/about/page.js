@@ -15,7 +15,7 @@ export default function About() {
         <ul className="list-disc list-inside text-gray-300 space-y-2 leading-relaxed">
           <li>Navigate to the Analyzer page.</li>
           <li>Select a player position from the dropdown menu.</li>
-          <li>Click the "Analyze" button to generate a detailed profile.</li>
+          <li>Click the &quot;Analyze&quot; button to generate a detailed profile.</li>
           <li>View the interactive result card featuring styles, strengths, and a real-world player example.</li>
         </ul>
       </div>
