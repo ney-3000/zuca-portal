@@ -1,67 +1,313 @@
 "use client";
 
-import { Lock, ArrowRight } from "lucide-react";
-import Link from "next/link";
-import { useState } from "react";
+import { Lock, ArrowRight, User, Shield, Key, Mail, ChevronLeft, RefreshCw, AlertCircle, Sparkles } from "lucide-react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function AreaReservadaPage() {
-  const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState("client"); // "client" | "admin"
+  const [step, setStep] = useState(1); // 1: Credentials, 2: OTP
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [simulatedCode, setSimulatedCode] = useState(""); // For quick mock testing
+  const [countdown, setCountdown] = useState(60);
 
-  const handleLogin = (e) => {
+  // Countdown timer for resending OTP
+  useEffect(() => {
+    let timer;
+    if (step === 2 && countdown > 0) {
+      timer = setInterval(() => {
+        setCountdown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [step, countdown]);
+
+  const handleSendOtp = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
+    setError("");
+    setSimulatedCode("");
+
+    try {
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao enviar código de verificação.");
+      }
+
+      // If in mock/simulation mode, the backend sends the code back in simulatedOtp
+      if (data.simulatedOtp) {
+        setSimulatedCode(data.simulatedOtp);
+      }
+
+      setStep(2);
+      setCountdown(60);
+    } catch (err) {
+      setError(err.message);
+    } finally {
       setLoading(false);
-      router.push("/area-reservada/dashboard");
-    }, 1200);
+    }
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Código incorreto.");
+      }
+
+      // Store basic session details for personalized greeting
+      localStorage.setItem("zuca_user_email", email);
+      localStorage.setItem("zuca_user_role", activeTab);
+
+      // Route to correct dashboard
+      if (activeTab === "admin") {
+        router.push("/area-reservada/dashboard");
+      } else {
+        router.push("/area-reservada/cliente");
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (countdown > 0) return;
+    setLoading(true);
+    setError("");
+    setOtp("");
+    
+    try {
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao reenviar código.");
+      }
+
+      if (data.simulatedOtp) {
+        setSimulatedCode(data.simulatedOtp);
+      }
+
+      setCountdown(60);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const goBackToStep1 = () => {
+    setStep(1);
+    setOtp("");
+    setError("");
+    setSimulatedCode("");
   };
 
   return (
-    <div className="container mx-auto px-4 py-16 md:py-32 flex flex-col items-center justify-center text-center min-h-[70vh]">
+    <div className="container mx-auto px-4 py-12 md:py-24 flex flex-col items-center justify-center min-h-[80vh]">
       <div className="max-w-md w-full bg-surface p-8 rounded-3xl border border-surface-light shadow-2xl relative overflow-hidden">
         
-        <div className="w-16 h-16 rounded-2xl bg-charcoal flex items-center justify-center mb-6 mx-auto border border-surface-light shadow-[0_0_15px_rgba(0,0,0,0.5)]">
-          <Lock className="w-8 h-8 text-mint" />
-        </div>
-        
-        <h1 className="text-2xl font-black text-white mb-2">Área Reservada</h1>
-        <p className="text-gray-400 text-sm mb-8">
-          Acesso exclusivo para funcionários governamentais e administradores do sistema Zuca.
+        {/* Glow backdrop effect */}
+        <div className="absolute -top-20 -right-20 w-40 h-40 bg-mint/5 rounded-full blur-[40px] pointer-events-none"></div>
+
+        {/* Step 1 Title Icon */}
+        {step === 1 ? (
+          <div className="w-16 h-16 rounded-2xl bg-charcoal flex items-center justify-center mb-6 mx-auto border border-surface-light shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+            <Lock className="w-8 h-8 text-mint" />
+          </div>
+        ) : (
+          <button 
+            onClick={goBackToStep1}
+            className="absolute top-6 left-6 text-gray-400 hover:text-white p-1 rounded-lg hover:bg-charcoal transition-colors flex items-center gap-1 text-xs font-bold"
+          >
+            <ChevronLeft className="w-4 h-4" /> Voltar
+          </button>
+        )}
+
+        <h1 className="text-3xl font-black text-white text-center mb-2">Área Reservada</h1>
+        <p className="text-gray-400 text-sm text-center mb-6 max-w-[300px] mx-auto leading-relaxed">
+          {step === 1 
+            ? "Selecione o seu portal e insira as suas credenciais para autenticação de segurança."
+            : "Inserimos um código de segurança único para validar o seu acesso."
+          }
         </p>
 
-        <form onSubmit={handleLogin} className="flex flex-col gap-4 text-left">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Nuit ou Email Oficial</label>
-            <input 
-              type="text" 
-              required
-              className="w-full bg-charcoal border border-surface-light rounded-xl px-4 py-3 text-white focus:outline-none focus:border-mint transition-colors placeholder-gray-600"
-              placeholder="Ex: 12345678"
-            />
+        {/* Step 1: Client vs Admin Tab Switching */}
+        {step === 1 && (
+          <div className="grid grid-cols-2 bg-charcoal p-1.5 rounded-xl border border-surface-light mb-6">
+            <button
+              onClick={() => { setActiveTab("client"); setError(""); }}
+              className={`flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold transition-all ${
+                activeTab === "client" 
+                  ? "bg-mint text-charcoal shadow-md" 
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              <User className="w-4 h-4" /> Cidadão (Cliente)
+            </button>
+            <button
+              onClick={() => { setActiveTab("admin"); setError(""); }}
+              className={`flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold transition-all ${
+                activeTab === "admin" 
+                  ? "bg-mint text-charcoal shadow-md" 
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              <Shield className="w-4 h-4" /> Funcionário (Admin)
+            </button>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Palavra-passe</label>
-            <input 
-              type="password" 
-              required
-              className="w-full bg-charcoal border border-surface-light rounded-xl px-4 py-3 text-white focus:outline-none focus:border-mint transition-colors placeholder-gray-600"
-              placeholder="••••••••"
-            />
-          </div>
-          
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="w-full bg-mint hover:bg-white text-charcoal font-black py-4 rounded-xl mt-4 transition-all flex items-center justify-center gap-2"
-          >
-            {loading ? "Autenticando..." : <>Autenticar <ArrowRight className="w-5 h-5" /></>}
-          </button>
-        </form>
+        )}
 
-        <div className="mt-6 pt-6 border-t border-surface-light text-xs text-gray-500">
-          O acesso não autorizado a sistemas do Estado é um crime punível por lei.
+        {/* Global Error Banner */}
+        {error && (
+          <div className="mb-6 bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl flex items-start gap-2.5 text-sm">
+            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* Step 2: Simulated OTP Code Display Alert */}
+        {step === 2 && simulatedCode && (
+          <div className="mb-6 bg-mint/10 border border-mint/20 text-mint p-4 rounded-xl flex flex-col gap-1.5">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
+              <Sparkles className="w-4 h-4 animate-pulse" /> Modo de Simulação Ativo
+            </div>
+            <p className="text-xs text-gray-300">
+              O código enviado para o seu e-mail (<span className="text-white font-medium">{email}</span>) é:
+            </p>
+            <div className="text-2xl font-mono font-black text-white text-center bg-charcoal/50 py-2 rounded-lg tracking-widest border border-mint/20 mt-1">
+              {simulatedCode}
+            </div>
+          </div>
+        )}
+
+        {/* FORM WIZARD */}
+        {step === 1 ? (
+          <form onSubmit={handleSendOtp} className="flex flex-col gap-4 text-left">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5" /> Email Cadastrado
+              </label>
+              <input 
+                type="email" 
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-charcoal border border-surface-light rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mint transition-colors placeholder-gray-600"
+                placeholder={activeTab === "client" ? "exemplo@cidadao.co.mz" : "admin@zuca.gov.mz"}
+              />
+            </div>
+            
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                <Key className="w-3.5 h-3.5" /> Palavra-passe
+              </label>
+              <input 
+                type="password" 
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-charcoal border border-surface-light rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-mint transition-colors placeholder-gray-600"
+                placeholder="••••••••"
+              />
+            </div>
+            
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="w-full bg-mint hover:bg-white text-charcoal font-black py-4.5 rounded-xl mt-4 transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,255,136,0.15)] hover:shadow-[0_0_25px_rgba(0,255,136,0.3)] disabled:opacity-50"
+            >
+              {loading ? (
+                <RefreshCw className="w-5 h-5 animate-spin" />
+              ) : (
+                <>Prosseguir para OTP <ArrowRight className="w-5 h-5" /></>
+              )}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleVerifyOtp} className="flex flex-col gap-6 text-left">
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest text-center">
+                Introduza o código de 6 dígitos
+              </label>
+              <input 
+                type="text" 
+                maxLength="6"
+                required
+                pattern="\d*"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                className="w-full text-center text-3xl font-mono tracking-[10px] bg-charcoal border border-surface-light rounded-xl py-4 focus:outline-none focus:border-mint text-mint placeholder-gray-700"
+                placeholder="000000"
+              />
+            </div>
+
+            <div className="text-center text-xs">
+              {countdown > 0 ? (
+                <span className="text-gray-500">
+                  Reenviar código em <strong className="text-gray-300">{countdown}s</strong>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={loading}
+                  className="text-mint hover:underline font-bold focus:outline-none"
+                >
+                  Reenviar código de confirmação
+                </button>
+              )}
+            </div>
+            
+            <button 
+              type="submit" 
+              disabled={loading || otp.length !== 6}
+              className="w-full bg-mint hover:bg-white text-charcoal font-black py-4.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,255,136,0.15)] disabled:opacity-40"
+            >
+              {loading ? (
+                <RefreshCw className="w-5 h-5 animate-spin" />
+              ) : (
+                <>Verificar e Aceder <ArrowRight className="w-5 h-5" /></>
+              )}
+            </button>
+          </form>
+        )}
+
+        <div className="mt-6 pt-6 border-t border-surface-light text-center text-xs text-gray-500 leading-relaxed">
+          {activeTab === "admin" 
+            ? "Acesso auditado por chaves criptográficas governamentais."
+            : "Portal do Cidadão sob regulamentação legal de proteção de dados."
+          }
         </div>
       </div>
     </div>
