@@ -1,6 +1,7 @@
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
+import VisitorTracker from "@/components/VisitorTracker";
 
 export const metadata = {
   title: "Zuca - Portal de Serviços Digitais",
@@ -22,6 +23,7 @@ export default function RootLayout({ children }) {
         We ensure smooth text aliasing across PCs and Mobiles. 
       */}
       <body className="antialiased bg-charcoal text-white min-h-screen flex flex-col font-sans overflow-x-hidden selection:bg-mint selection:text-charcoal" suppressHydrationWarning>
+        <VisitorTracker />
         <Header />
         
         {/* Main Content Area - Expansive width on Desktop, padded bottom for mobile nav only */}

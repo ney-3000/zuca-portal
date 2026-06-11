@@ -3,9 +3,20 @@
 import { Lock, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function AreaReservadaPage() {
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setTimeout(() => {
+      setLoading(false);
+      router.push("/area-reservada/dashboard");
+    }, 1200);
+  };
 
   return (
     <div className="container mx-auto px-4 py-16 md:py-32 flex flex-col items-center justify-center text-center min-h-[70vh]">
@@ -20,7 +31,7 @@ export default function AreaReservadaPage() {
           Acesso exclusivo para funcionários governamentais e administradores do sistema Zuca.
         </p>
 
-        <form onSubmit={(e) => { e.preventDefault(); setLoading(true); setTimeout(() => setLoading(false), 2000); }} className="flex flex-col gap-4 text-left">
+        <form onSubmit={handleLogin} className="flex flex-col gap-4 text-left">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Nuit ou Email Oficial</label>
             <input 
