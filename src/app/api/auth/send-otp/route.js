@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 
 const secret = process.env.OTP_SECRET || 'zuca_portal_secure_otp_secret_key_12345';
-const resendKey = process.env.RESEND_API_KEY;
+
+// SMTP Configuration
+const smtpHost = process.env.SMTP_HOST;
+const smtpPort = parseInt(process.env.SMTP_PORT || '587');
+const smtpUser = process.env.SMTP_USER || 'kukula@goldenkicks.co.mz';
+const smtpPass = process.env.SMTP_PASS;
+const senderEmail = process.env.SENDER_EMAIL || smtpUser;
 
 export async function POST(request) {
   try {
@@ -12,7 +18,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'E-mail é obrigatório' }, { status: 400 });
     }
 
-    // 1. Generate a 6-digit numeric OTP
+    // 1. Generate 6-digit numeric OTP code
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     
     // 2. Set expiration time (5 minutes from now)
@@ -23,14 +29,27 @@ export async function POST(request) {
     const hash = crypto.createHmac('sha256', secret).update(data).digest('hex');
     const token = `${expires}.${hash}`;
 
-    let isMock = true;
+    let emailSent = false;
+    let errorDetail = null;
 
-    // 4. Send email if Resend API key is configured
-    if (resendKey && resendKey !== 'your_resend_key' && !resendKey.includes('placeholder')) {
-      const resend = new Resend(resendKey);
+    // 4. Send email using Nodemailer SMTP if configured
+    if (smtpHost && smtpPass) {
       try {
-        await resend.emails.send({
-          from: 'Zuca Portal <onboarding@resend.dev>', // Resend sandbox domain, works for the registered owner's email out-of-the-box
+        const transporter = nodemailer.createTransport({
+          host: smtpHost,
+          port: smtpPort,
+          secure: smtpPort === 465, // True for 465 SSL, false for TLS (587)
+          auth: {
+            user: smtpUser,
+            pass: smtpPass
+          },
+          tls: {
+            rejectUnauthorized: false // Helps bypass SSL trust issues on custom mail servers
+          }
+        });
+
+        await transporter.sendMail({
+          from: `"Portal Zuca" <${senderEmail}>`,
           to: email,
           subject: 'Código de Confirmação OTP - Portal Zuca',
           html: `
@@ -48,7 +67,7 @@ export async function POST(request) {
                   ${otp}
                 </div>
                 <p style="color: #ef4444; font-size: 11px; margin-top: 25px; margin-bottom: 0;">
-                  Se não tentou entrar na sua conta, por favor ignore este email ou contacte o suporte.
+                  Se não tentou entrar na sua conta, por favor ignore este email.
                 </p>
               </div>
               <div style="text-align: center; margin-top: 30px; color: #666666; font-size: 11px;">
@@ -57,23 +76,24 @@ export async function POST(request) {
             </div>
           `
         });
-        isMock = false;
+        emailSent = true;
       } catch (err) {
-        console.error('Failed to send real email via Resend, falling back to mock:', err);
+        console.error('SMTP Mailer Error:', err);
+        errorDetail = err.message;
       }
     }
 
-    // Output debug log for local developers
-    console.log(`\n=================== OTP GENERATED ===================\nEMAIL: ${email}\nCODE: ${otp}\nMODE: ${isMock ? 'SIMULATOR (Logged to Console)' : 'REAL EMAIL (Sent via Resend)'}\n======================================================\n`);
+    // Output secure debug logs to server output/Vercel console
+    console.log(`\n=================== OTP SECURITY LOG ===================\nRECIPIENT: ${email}\nOTP CODE: ${otp}\nSTATUS: ${emailSent ? 'SENT VIA SMTP' : 'SIMULATION MODE (SMTP Config Missing/Failed)'}\nERROR DETAIL: ${errorDetail || 'None'}\n======================================================\n`);
 
     const response = NextResponse.json({ 
       success: true, 
-      message: isMock ? 'OTP gerado em modo de simulação' : 'OTP enviado com sucesso',
-      // Send simulated code to client ONLY if mock mode is true so they can test instantly
-      simulatedOtp: isMock ? otp : null
+      message: emailSent 
+        ? 'Código de confirmação enviado para o seu e-mail.' 
+        : 'Modo de simulação ativo. O código de segurança foi enviado para os logs do servidor.'
     });
 
-    // Set signed cookie
+    // Set signed session cookie
     response.cookies.set('otp_session', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

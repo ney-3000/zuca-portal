@@ -1,6 +1,6 @@
 "use client";
 
-import { Lock, ArrowRight, User, Shield, Key, Mail, ChevronLeft, RefreshCw, AlertCircle, Sparkles } from "lucide-react";
+import { Lock, ArrowRight, User, Shield, Key, Mail, ChevronLeft, RefreshCw, AlertCircle } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
@@ -13,7 +13,6 @@ export default function AreaReservadaPage() {
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [simulatedCode, setSimulatedCode] = useState(""); // For quick mock testing
   const [countdown, setCountdown] = useState(60);
 
   // Countdown timer for resending OTP
@@ -31,7 +30,6 @@ export default function AreaReservadaPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    setSimulatedCode("");
 
     try {
       const res = await fetch("/api/auth/send-otp", {
@@ -44,11 +42,6 @@ export default function AreaReservadaPage() {
 
       if (!res.ok) {
         throw new Error(data.error || "Erro ao enviar código de verificação.");
-      }
-
-      // If in mock/simulation mode, the backend sends the code back in simulatedOtp
-      if (data.simulatedOtp) {
-        setSimulatedCode(data.simulatedOtp);
       }
 
       setStep(2);
@@ -114,10 +107,6 @@ export default function AreaReservadaPage() {
         throw new Error(data.error || "Erro ao reenviar código.");
       }
 
-      if (data.simulatedOtp) {
-        setSimulatedCode(data.simulatedOtp);
-      }
-
       setCountdown(60);
     } catch (err) {
       setError(err.message);
@@ -130,7 +119,6 @@ export default function AreaReservadaPage() {
     setStep(1);
     setOtp("");
     setError("");
-    setSimulatedCode("");
   };
 
   return (
@@ -196,20 +184,6 @@ export default function AreaReservadaPage() {
           </div>
         )}
 
-        {/* Step 2: Simulated OTP Code Display Alert */}
-        {step === 2 && simulatedCode && (
-          <div className="mb-6 bg-mint/10 border border-mint/20 text-mint p-4 rounded-xl flex flex-col gap-1.5">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
-              <Sparkles className="w-4 h-4 animate-pulse" /> Modo de Simulação Ativo
-            </div>
-            <p className="text-xs text-gray-300">
-              O código enviado para o seu e-mail (<span className="text-white font-medium">{email}</span>) é:
-            </p>
-            <div className="text-2xl font-mono font-black text-white text-center bg-charcoal/50 py-2 rounded-lg tracking-widest border border-mint/20 mt-1">
-              {simulatedCode}
-            </div>
-          </div>
-        )}
 
         {/* FORM WIZARD */}
         {step === 1 ? (
