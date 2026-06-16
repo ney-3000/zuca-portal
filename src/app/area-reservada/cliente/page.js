@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { 
-  User, Mail, FileText, CheckCircle2, Clock, AlertCircle, ArrowLeft,
+  User, Mail, FileText, CheckCircle2, Clock, AlertCircle, ArrowLeft, ArrowRight,
   Smartphone, Monitor, Cpu, MapPin, ExternalLink, ShieldAlert, Award,
   ShoppingCart, Plus, Minus, Trash2, CreditCard, DollarSign, Check, X, ShieldCheck
 } from "lucide-react";
