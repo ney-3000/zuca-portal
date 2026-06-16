@@ -93,6 +93,17 @@ export default function ClientDashboard() {
     }
   }, []);
 
+  useEffect(() => {
+    if (isCartOpen || isCheckoutOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isCartOpen, isCheckoutOpen]);
+
   // Cart operations
   const addToCart = (item) => {
     setCart((prevCart) => {
@@ -483,7 +494,7 @@ export default function ClientDashboard() {
 
             {/* Bottom Total & Checkout Button */}
             {cart.length > 0 && (
-              <div className="p-6 border-t border-surface-light bg-surface flex flex-col gap-4">
+              <div className="p-6 pb-safe border-t border-surface-light bg-surface flex flex-col gap-4">
                 <div className="flex justify-between items-end">
                   <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Total Emolumentos:</span>
                   <span className="font-mono text-2xl text-mint font-black">{getCartTotal().toLocaleString('pt-MZ')} MZN</span>
@@ -521,7 +532,7 @@ export default function ClientDashboard() {
             </div>
 
             {/* Main Checkout Flow Container */}
-            <div className="flex-1 overflow-y-auto p-6 flex flex-col">
+            <div className="flex-1 overflow-y-auto p-6 pb-safe flex flex-col">
               
               {errorMessage && (
                 <div className="mb-6 bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl flex items-start gap-2.5 text-xs">
