@@ -134,7 +134,7 @@ export default function PedidoSucessoPage() {
                 <tr>
                   <td colSpan="2" className="py-5"></td>
                   <td className="py-5 px-4 text-right font-bold text-gray-400 uppercase text-xs print:text-black">Total Pago:</td>
-                  <td className="py-5 pl-4 text-right font-black text-mint text-xl font-mono print:text-black">${checkoutData.totalAmount.toLocaleString("pt-MZ")} MZN</td>
+                  <td className="py-5 pl-4 text-right font-black text-mint text-xl font-mono print:text-black">{checkoutData.totalAmount.toLocaleString("pt-MZ")} MZN</td>
                 </tr>
               </tfoot>
             </table>
