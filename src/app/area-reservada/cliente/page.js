@@ -191,7 +191,10 @@ export default function ClientDashboard() {
         throw new Error(data.error || "Ocorreu um erro ao processar o seu pagamento.");
       }
 
-      setCheckoutResult(data);
+      setCheckoutResult({
+        ...data,
+        totalAmount: getCartTotal()
+      });
       
       // Append paid items to timeline requests
       const newRequests = cart.map((item, idx) => ({
@@ -741,7 +744,9 @@ export default function ClientDashboard() {
 
                     <div className="border-t border-dashed border-surface-light pt-3 flex justify-between items-end">
                       <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Total Liquidado:</span>
-                      <span className="font-mono text-lg text-mint font-black">{getCartTotal().toLocaleString('pt-MZ')} MZN</span>
+                      <span className="font-mono text-lg text-mint font-black">
+                        {(checkoutResult.totalAmount || 0).toLocaleString('pt-MZ')} MZN
+                      </span>
                     </div>
                   </div>
 
