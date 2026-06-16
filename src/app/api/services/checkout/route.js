@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
+import crypto from 'crypto';
 
 // SMTP Configuration
 const smtpHost = process.env.SMTP_HOST;
@@ -7,6 +8,39 @@ const smtpPort = parseInt(process.env.SMTP_PORT || '587');
 const smtpUser = process.env.SMTP_USER || 'kukula@goldenkicks.co.mz';
 const smtpPass = process.env.SMTP_PASS;
 const senderEmail = process.env.SENDER_EMAIL || smtpUser;
+
+// M-Pesa API Configuration
+const mpesaHost = process.env.MPESA_API_HOST || 'api.sandbox.vm.co.mz:18352';
+const mpesaApiKey = process.env.MPESA_API_KEY;
+const mpesaPublicKey = process.env.MPESA_PUBLIC_KEY;
+const mpesaServiceProviderCode = process.env.MPESA_SERVICE_PROVIDER_CODE || '171717';
+
+// RSA Public Key Encryption function for M-Pesa Mozambique
+function generateMpesaToken(apiKey, publicKeyPEM) {
+  try {
+    let formattedKey = publicKeyPEM.trim();
+    if (!formattedKey.includes('-----BEGIN PUBLIC KEY-----')) {
+      // Clean up key and add PEM headers if they are missing
+      const cleanKey = formattedKey.replace(/[\r\n]/g, '').replace(/-----BEGIN PUBLIC KEY-----/g, '').replace(/-----END PUBLIC KEY-----/g, '');
+      // Split into 64-character lines
+      const lines = cleanKey.match(/.{1,64}/g) || [];
+      formattedKey = `-----BEGIN PUBLIC KEY-----\n${lines.join('\n')}\n-----END PUBLIC KEY-----`;
+    }
+    
+    const buffer = Buffer.from(apiKey);
+    const encrypted = crypto.publicEncrypt(
+      {
+        key: formattedKey,
+        padding: crypto.constants.RSA_PKCS1_PADDING
+      },
+      buffer
+    );
+    return encrypted.toString('base64');
+  } catch (err) {
+    console.error('M-Pesa RSA Encryption Error:', err);
+    throw new Error('Falha ao encriptar as credenciais do M-Pesa. Verifique o formato da Public Key.');
+  }
+}
 
 export async function POST(request) {
   try {
@@ -26,7 +60,72 @@ export async function POST(request) {
       minute: '2-digit'
     });
 
-    // 2. Generate table rows for the invoice
+    let mpesaTransactionId = null;
+    let mpesaApiCalled = false;
+    let mpesaApiSuccess = false;
+    let mpesaErrorDetail = null;
+
+    // 2. Call M-Pesa API if payment method is mpesa and configuration is present
+    if (paymentMethod === 'mpesa' && mpesaApiKey && mpesaPublicKey) {
+      mpesaApiCalled = true;
+      try {
+        const token = generateMpesaToken(mpesaApiKey, mpesaPublicKey);
+        
+        // Clean phone number (format should be country code 258 + 9 digit number)
+        let cleanPhone = phone.replace(/\D/g, '');
+        if (!cleanPhone.startsWith('258')) {
+          cleanPhone = `258${cleanPhone}`;
+        }
+
+        const mpesaUrl = `https://${mpesaHost}/ipg/v1x/c2bPayment/singleStage/`;
+        
+        const mpesaHeaders = {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Origin': process.env.MPESA_ORIGIN || 'ZucaPortal',
+          'Authorization': `Bearer ${token}`
+        };
+
+        const mpesaBody = {
+          input_Amount: Number(totalAmount).toFixed(2),
+          input_CustomerMSISDN: cleanPhone,
+          input_Country: 'MOZ',
+          input_Currency: 'MZN',
+          input_ServiceProviderCode: mpesaServiceProviderCode,
+          input_TransactionReference: refNumber,
+          input_ThirdPartyReference: refNumber
+        };
+
+        console.log(`[M-Pesa API Request] URL: ${mpesaUrl}`);
+        console.log(`[M-Pesa API Request] Headers:`, JSON.stringify({ ...mpesaHeaders, Authorization: 'Bearer [ENCRYPTED]' }));
+        console.log(`[M-Pesa API Request] Payload:`, JSON.stringify(mpesaBody));
+
+        const mpesaResponse = await fetch(mpesaUrl, {
+          method: 'POST',
+          headers: mpesaHeaders,
+          body: JSON.stringify(mpesaBody),
+          signal: AbortSignal.timeout(10000) // 10s timeout
+        });
+
+        const mpesaData = await mpesaResponse.json();
+        console.log('[M-Pesa API Response] Status:', mpesaResponse.status, 'Body:', JSON.stringify(mpesaData));
+
+        if (mpesaResponse.ok && (mpesaData.output_ResponseCode === 'INS-0' || mpesaData.output_ResponseCode === '0')) {
+          mpesaApiSuccess = true;
+          mpesaTransactionId = mpesaData.output_TransactionID || mpesaData.output_ConversationID || 'INS-0';
+        } else {
+          mpesaErrorDetail = mpesaData.output_ResponseDesc || mpesaData.output_ResponseCode || 'Recusado pelo M-Pesa';
+          throw new Error(mpesaErrorDetail);
+        }
+      } catch (err) {
+        console.error('M-Pesa API Execution Exception:', err);
+        return NextResponse.json({ 
+          error: `O M-Pesa recusou a transação: ${err.message}. Por favor, confirme o saldo ou introduza o PIN correto no telemóvel.` 
+        }, { status: 400 });
+      }
+    }
+
+    // 3. Generate table rows for the invoice
     const itemRows = cartItems.map(item => `
       <tr>
         <td style="padding: 12px; border-bottom: 1px solid #2a2a2a; color: #ffffff;">${item.name}</td>
@@ -39,7 +138,7 @@ export async function POST(request) {
     let emailSent = false;
     let errorDetail = null;
 
-    // 3. Send HTML invoice via Nodemailer SMTP if configured
+    // 4. Send HTML invoice via Nodemailer SMTP if configured (with text fallback for anti-spam)
     if (smtpHost && smtpPass) {
       try {
         const transporter = nodemailer.createTransport({
@@ -55,10 +154,13 @@ export async function POST(request) {
           }
         });
 
+        const plainTextFallback = `Portal Zuca - Fatura Recibo Simplificada ${refNumber}\n\nCaro(a) ${name},\nO seu pagamento de ${totalAmount.toLocaleString('pt-MZ')} MZN via ${paymentMethod.toUpperCase()} foi recebido e autenticado digitalmente.\n\nDetalhes do Recibo:\nReferência: ${refNumber}\nContribuinte: ${name}\nNUIT: ${nuit}\nData: ${dateFormatted}\n\nEste documento é uma fatura-recibo simplificada emitida eletronicamente pelo Portal de Serviços Digitais Zuca da República de Moçambique.`;
+
         await transporter.sendMail({
           from: `"Portal Zuca - Finanças" <${senderEmail}>`,
           to: email,
-          subject: `Fatura Recibo Simplificada ${refNumber} - Portal Zuca`,
+          subject: `Recibo Simplificado ${refNumber} - Zuca`,
+          text: plainTextFallback, // Crucial parameter to avoid Spam folders
           html: `
             <div style="font-family: Arial, sans-serif; background-color: #121212; color: #ffffff; padding: 40px; border-radius: 16px; max-width: 650px; margin: 0 auto; border: 1px solid #2a2a2a;">
               
@@ -88,6 +190,7 @@ export async function POST(request) {
                     <span style="color: #b0b0b0; display: block; margin-bottom: 3px;">Referência: <strong style="color: #00FF88; font-family: monospace;">${refNumber}</strong></span>
                     <span style="color: #b0b0b0; display: block; margin-bottom: 3px;">Data: ${dateFormatted}</span>
                     <span style="color: #b0b0b0; display: block;">Método de Pagamento: <strong style="color: #ffffff; text-transform: uppercase;">${paymentMethod}</strong></span>
+                    ${mpesaTransactionId ? `<span style="color: #b0b0b0; display: block;">ID M-Pesa: <strong style="color: #ffffff; font-family: monospace;">${mpesaTransactionId}</strong></span>` : ''}
                   </td>
                 </tr>
               </table>
@@ -124,7 +227,12 @@ export async function POST(request) {
                 &copy; ${new Date().getFullYear()} Portal de Serviços Digitais Zuca. República de Moçambique.
               </div>
             </div>
-          `
+          `,
+          headers: {
+            'X-Priority': '3',
+            'X-MSMail-Priority': 'Normal',
+            'Importance': 'normal'
+          }
         });
         emailSent = true;
       } catch (err) {
@@ -133,20 +241,22 @@ export async function POST(request) {
       }
     }
 
-    console.log(`\n=================== TRANSACTION LOG ===================\nREF: ${refNumber}\nCITIZEN: ${name} (NUIT: ${nuit})\nEMAIL: ${email}\nTOTAL: ${totalAmount} MZN\nPAYMENT: ${paymentMethod}\nSTATUS: ${emailSent ? 'RECEIPT SENT VIA SMTP' : 'SIMULATED (SMTP Configuration Missing/Failed)'}\nERROR DETAIL: ${errorDetail || 'None'}\n========================================================\n`);
+    console.log(`\n=================== TRANSACTION LOG ===================\nREF: ${refNumber}\nCITIZEN: ${name} (NUIT: ${nuit})\nEMAIL: ${email}\nTOTAL: ${totalAmount} MZN\nPAYMENT: ${paymentMethod} ${mpesaApiCalled ? `(REAL API: ${mpesaApiSuccess ? 'SUCCESS' : 'FAILED'})` : '(SIMULATED)'}\nSTATUS: ${emailSent ? 'RECEIPT SENT VIA SMTP' : 'SIMULATED (SMTP Configuration Missing/Failed)'}\nERROR DETAIL: ${errorDetail || 'None'}\n========================================================\n`);
 
     return NextResponse.json({
       success: true,
       refNumber,
       date: dateFormatted,
       emailSent,
+      mpesaTransactionId,
+      mpesaApiCalled,
       message: emailSent 
         ? 'Pagamento efetuado com sucesso! O recibo foi enviado para o seu email.' 
-        : 'Pagamento efetuado em modo de simulação. O recibo foi impresso nos logs do servidor.'
+        : 'Pagamento efetuado com sucesso (modo de simulação). O recibo foi impresso nos logs do servidor.'
     });
 
   } catch (error) {
     console.error('Checkout API error:', error);
-    return NextResponse.json({ error: 'Erro ao processar o checkout' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro interno ao processar o checkout' }, { status: 500 });
   }
 }

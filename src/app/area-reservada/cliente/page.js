@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { 
   User, Mail, FileText, CheckCircle2, Clock, AlertCircle, ArrowLeft, ArrowRight,
   Smartphone, Monitor, Cpu, MapPin, ExternalLink, ShieldAlert, Award,
@@ -9,6 +10,7 @@ import {
 import Link from "next/link";
 
 export default function ClientDashboard() {
+  const router = useRouter();
   const [email, setEmail] = useState("cidadao@exemplo.co.mz");
   const [sessionInfo, setSessionInfo] = useState(null);
   
@@ -191,11 +193,18 @@ export default function ClientDashboard() {
         throw new Error(data.error || "Ocorreu um erro ao processar o seu pagamento.");
       }
 
-      setCheckoutResult({
-        ...data,
-        totalAmount: getCartTotal()
-      });
-      
+      // Save order details to localStorage for redirection success page
+      const successData = {
+        refNumber: data.refNumber,
+        date: data.date,
+        paymentMethod: paymentMethod,
+        fullName: fullName,
+        nuit: nuit,
+        totalAmount: getCartTotal(),
+        items: cart.map(item => ({ name: item.name, qty: item.qty, price: item.price }))
+      };
+      localStorage.setItem("zuca_last_checkout", JSON.stringify(successData));
+
       // Append paid items to timeline requests
       const newRequests = cart.map((item, idx) => ({
         id: `REQ-2026-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -210,7 +219,8 @@ export default function ClientDashboard() {
 
       setDocumentRequests(prev => [...newRequests, ...prev]);
       setCart([]); // Clear cart
-      setCheckoutStep(3); // Success Screen
+      setIsCheckoutOpen(false); // Close checkout drawer
+      router.push("/area-reservada/cliente/pedido-sucesso"); // Redirect!
     } catch (err) {
       setErrorMessage(err.message);
       setCheckoutStep(1); // Go back to edit form
